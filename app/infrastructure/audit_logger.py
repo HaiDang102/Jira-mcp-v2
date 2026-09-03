@@ -1,23 +1,5 @@
 from __future__ import annotations
 
-"""
-Audit Log — ghi lại mọi thao tác ai/gì/khi nào/kết quả (mục Infrastructure
-Layer trong sơ đồ). Dùng SQLite riêng để không lẫn với draft_store.
-
-Cách dùng trong tool WRITE/DESTRUCTIVE:
-
-    audit = AuditLogger()
-    await audit.log(
-        operation="jira.update_issue",
-        actor=current_user,          # ai gọi
-        request_id=request_id,
-        issue_key="SP-123",
-        action="confirm_execute",
-        status="ok",                  # "ok" | "error" | "prepared" | "confirmed"
-        details={"fields_changed": ["summary", "priority"]},
-    )
-"""
-
 import json
 import sqlite3
 import time
@@ -25,13 +7,24 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from app.config import PROJECT_ROOT
 
-DEFAULT_DB_PATH = Path("jira_mcp_audit.db")
+
+DEFAULT_DB_PATH = PROJECT_ROOT / "jira_mcp_audit.db"
 
 
 class AuditLogger:
-    def __init__(self, db_path: Path | str = DEFAULT_DB_PATH) -> None:
-        self.db_path = str(db_path)
+    def __init__(
+        self,
+        db_path: Path | str = DEFAULT_DB_PATH,
+    ) -> None:
+        path = Path(db_path)
+        if not path.is_absolute():
+            path = PROJECT_ROOT / path
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        self.db_path = str(path)
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
@@ -44,25 +37,29 @@ class AuditLogger:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS audit_log (
-                    id          TEXT PRIMARY KEY,
-                    ts          REAL NOT NULL,
-                    operation   TEXT NOT NULL,
-                    actor       TEXT,
-                    request_id  TEXT,
-                    issue_key   TEXT,
-                    action      TEXT,
-                    status      TEXT NOT NULL,
+                    id           TEXT PRIMARY KEY,
+                    ts           REAL NOT NULL,
+                    operation    TEXT NOT NULL,
+                    actor        TEXT,
+                    request_id   TEXT,
+                    issue_key    TEXT,
+                    action       TEXT,
+                    status       TEXT NOT NULL,
                     details_json TEXT
                 )
                 """
             )
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_audit_operation "
-                "ON audit_log(operation)"
+                """
+                CREATE INDEX IF NOT EXISTS idx_audit_operation
+                ON audit_log(operation)
+                """
             )
             conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_audit_issue_key "
-                "ON audit_log(issue_key)"
+                """
+                CREATE INDEX IF NOT EXISTS idx_audit_issue_key
+                ON audit_log(issue_key)
+                """
             )
             conn.commit()
 
@@ -81,8 +78,17 @@ class AuditLogger:
             conn.execute(
                 """
                 INSERT INTO audit_log
-                    (id, ts, operation, actor, request_id,
-                     issue_key, action, status, details_json)
+                    (
+                        id,
+                        ts,
+                        operation,
+                        actor,
+                        request_id,
+                        issue_key,
+                        action,
+                        status,
+                        details_json
+                    )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
@@ -94,7 +100,11 @@ class AuditLogger:
                     issue_key,
                     action,
                     status,
-                    json.dumps(details or {}, ensure_ascii=False, default=str),
+                    json.dumps(
+                        details or {},
+                        ensure_ascii=False,
+                        default=str,
+                    ),
                 ),
             )
             conn.commit()
@@ -104,7 +114,6 @@ class AuditLogger:
         limit: int = 50,
         operation: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Dùng để debug / expose qua resource jira://audit nếu cần."""
         query = "SELECT * FROM audit_log"
         params: tuple[Any, ...] = ()
 
@@ -118,3 +127,16 @@ class AuditLogger:
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
             return [dict(row) for row in rows]
+
+
+_audit_singleton: AuditLogger | None = None
+
+
+def create_audit_logger() -> AuditLogger:
+    """Create or reuse the application-wide AuditLogger."""
+    global _audit_singleton
+
+    if _audit_singleton is None:
+        _audit_singleton = AuditLogger()
+
+    return _audit_singleton

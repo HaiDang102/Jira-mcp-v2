@@ -1,86 +1,99 @@
 from __future__ import annotations
 
-"""
-MCP Prompts — reusable templates that guide the LLM client on how to
-draft well-formed Jira content before calling a WRITE tool.
-
-Like resources, this module must be imported by app/server.py before
-`list_prompts()` is called:
-
-    from app.prompts import jira_prompts  # noqa: F401  (registers prompts)
-"""
-
-from app.server import mcp
+from mcp.server.mcpserver import MCPServer
 
 
-@mcp.prompt("jira_bug_report")
-def jira_bug_report(
-    summary: str,
-    steps_to_reproduce: str,
-    expected_result: str,
-    actual_result: str,
-    environment: str = "",
-    priority: str = "Medium",
-    evidence: str = "",
-) -> str:
-    """Hướng dẫn tạo bug theo chuẩn QA."""
-    return f"""Tạo một Jira bug issue theo chuẩn QA với các trường sau:
+def register_jira_prompts(mcp: MCPServer) -> None:
+    """Register reusable Jira prompts."""
 
-- Summary: {summary}
-- Steps to reproduce:
+    @mcp.prompt("jira_bug_report")
+    def jira_bug_report(
+        summary: str,
+        error_description: str,
+        steps_to_reproduce: str,
+        actual_result: str,
+        expected_result: str,
+        assignee: str = "",
+        start_date: str = "",
+        due_date: str = "",
+        priority: str = "Medium",
+        labels: str = "",
+        epic_link: str = "",
+        environment: str = "",
+        evidence: str = "",
+    ) -> str:
+        """
+        Guide the LLM to create a complete QA bug report and respect
+        Prepare -> Review -> Confirm -> Execute.
+        """
+
+        return f"""Bạn đang chuẩn bị một Jira Bug cho QA.
+
+Thông tin đầu vào:
+
+Summary:
+{summary}
+
+Mô tả lỗi:
+{error_description}
+
+Các bước tái hiện:
 {steps_to_reproduce}
-- Expected result: {expected_result}
-- Actual result: {actual_result}
-- Environment: {environment or "(chưa cung cấp — hỏi lại user nếu cần)"}
-- Priority: {priority}
-- Evidence: {evidence or "(đính kèm screenshot/log nếu có)"}
 
-Sau khi soạn xong nội dung, gọi tool tạo issue WRITE (ví dụ jira_create_issue)
-theo đúng luồng Prepare -> Review -> Confirm -> Execute. Không tạo issue trực
-tiếp mà chưa qua bước Review với người dùng.
+Kết quả thực tế:
+{actual_result}
+
+Kết quả mong đợi:
+{expected_result}
+
+Assignee: {assignee or "(chưa cung cấp)"}
+Start Date: {start_date or "(chưa cung cấp)"}
+Due Date: {due_date or "(chưa cung cấp)"}
+Priority: {priority}
+Labels: {labels or "(không có)"}
+Epic Link: {epic_link or "(không có)"}
+Environment: {environment or "(chưa cung cấp)"}
+Evidence: {evidence or "(không có)"}
+
+QUY TẮC BẮT BUỘC:
+
+1. Không tự bịa Assignee, Start Date, Due Date, Epic Link hoặc Evidence.
+2. Nếu thiếu field mà user yêu cầu phải có, hỏi lại user trước khi Prepare.
+3. Bug phải có đủ:
+   - Summary
+   - Mô tả lỗi
+   - Các bước tái hiện lỗi
+   - Kết quả thực tế
+   - Kết quả mong đợi
+4. Priority, Labels, Assignee, Start Date, Due Date, Epic Link phải được
+   đưa vào request khi user đã cung cấp.
+5. Chỉ sử dụng Jira username hợp lệ cho Assignee/Reporter.
+6. Sau khi đủ dữ liệu, gọi jira_create_issue_prepare trước.
+7. Hiển thị toàn bộ draft cho user review, bao gồm:
+   Summary, Assignee, Priority, Labels, Start Date, Due Date, Epic Link,
+   Description và custom fields.
+8. Sau PREPARE phải DỪNG. Không tự gọi jira_create_issue_confirm.
+9. Chỉ khi user xác nhận rõ ràng thì mới gọi jira_create_issue_confirm
+   với confirm=true.
+10. Không retry bằng cách tạo draft mới khi confirm đã thành công.
 """
 
+    @mcp.prompt("jira_task_create")
+    def jira_task_create(
+        summary: str,
+        description: str = "",
+        assignee: str = "",
+        due_date: str = "",
+        priority: str = "Medium",
+    ) -> str:
+        return f"""Soạn Jira Task:
 
-@mcp.prompt("jira_feature_request")
-def jira_feature_request(
-    summary: str,
-    description: str,
-    business_value: str = "",
-    acceptance_criteria: str = "",
-    priority: str = "Medium",
-) -> str:
-    """Hướng dẫn tạo feature request."""
-    return f"""Tạo một Jira feature request với các trường sau:
+Summary: {summary}
+Description: {description or "(chưa cung cấp)"}
+Assignee: {assignee or "(chưa chỉ định)"}
+Due Date: {due_date or "(không có)"}
+Priority: {priority}
 
-- Summary: {summary}
-- Description: {description}
-- Business value: {business_value or "(chưa cung cấp)"}
-- Acceptance criteria:
-{acceptance_criteria or "(chưa cung cấp — nên hỏi lại user trước khi tạo draft)"}
-- Priority: {priority}
-
-Soạn draft trước, cho user review, chỉ execute (tạo thật trên Jira) sau khi
-user xác nhận rõ ràng (YES/CONFIRM).
-"""
-
-
-@mcp.prompt("jira_task_create")
-def jira_task_create(
-    summary: str,
-    description: str = "",
-    assignee: str = "",
-    due_date: str = "",
-    priority: str = "Medium",
-) -> str:
-    """Hướng dẫn tạo task thông thường."""
-    return f"""Tạo một Jira task với các trường sau:
-
-- Summary: {summary}
-- Description: {description or "(chưa cung cấp)"}
-- Assignee: {assignee or "(chưa gán, để trống hoặc hỏi user)"}
-- Due date: {due_date or "(không có hạn)"}
-- Priority: {priority}
-
-Luôn đi qua luồng Prepare (draft) -> Review -> Confirm -> Execute trước khi
-gọi tool WRITE thực sự tạo task trên Jira.
+Không tự bịa dữ liệu. Luôn dùng flow:
+Prepare -> Review -> Confirm -> Execute.
 """

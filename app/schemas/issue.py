@@ -1,19 +1,23 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 # ============================================================
-# JIRA USER
+# JIRA READ MODELS
 # ============================================================
+
 
 class JiraUser(BaseModel):
-    """
-    Thông tin user Jira tối thiểu cần dùng trong MCP.
-    """
-
     model_config = ConfigDict(extra="allow")
 
     account_id: str | None = None
@@ -22,15 +26,7 @@ class JiraUser(BaseModel):
     email: str | None = None
 
 
-# ============================================================
-# JIRA STATUS
-# ============================================================
-
 class JiraStatus(BaseModel):
-    """
-    Trạng thái hiện tại của Jira issue.
-    """
-
     model_config = ConfigDict(extra="allow")
 
     id: str | None = None
@@ -38,45 +34,21 @@ class JiraStatus(BaseModel):
     description: str | None = None
 
 
-# ============================================================
-# JIRA PRIORITY
-# ============================================================
-
 class JiraPriority(BaseModel):
-    """
-    Priority của Jira issue.
-    """
-
     model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     name: str
 
-
-# ============================================================
-# JIRA ISSUE TYPE
-# ============================================================
 
 class JiraIssueType(BaseModel):
-    """
-    Loại Jira issue: Bug, Task, Story...
-    """
-
     model_config = ConfigDict(extra="allow")
 
     id: str | None = None
     name: str
 
 
-# ============================================================
-# JIRA PROJECT
-# ============================================================
-
 class JiraProject(BaseModel):
-    """
-    Thông tin project của issue.
-    """
-
     model_config = ConfigDict(extra="allow")
 
     id: str | None = None
@@ -84,248 +56,221 @@ class JiraProject(BaseModel):
     name: str | None = None
 
 
-# ============================================================
-# ISSUE DATA
-# ============================================================
-
 class IssueData(BaseModel):
-    """
-    Dữ liệu Jira Issue được chuẩn hóa để trả về MCP.
-    """
-
     model_config = ConfigDict(extra="allow")
 
     id: str | None = None
-
     key: str
-
-    self_url: str | None = Field(
-        default=None,
-        description="Jira REST API URL of the issue.",
-    )
+    self_url: str | None = None
 
     summary: str
-
     description: str | None = None
 
     project: JiraProject | None = None
-
     issue_type: JiraIssueType | None = None
-
     status: JiraStatus | None = None
-
     priority: JiraPriority | None = None
-
     assignee: JiraUser | None = None
-
     reporter: JiraUser | None = None
 
-    labels: list[str] = Field(
-        default_factory=list
-    )
-
-    components: list[str] = Field(
-        default_factory=list
-    )
+    labels: list[str] = Field(default_factory=list)
+    components: list[str] = Field(default_factory=list)
 
     environment: str | None = None
-
     created: str | None = None
-
     updated: str | None = None
+    due_date: str | None = None
 
-    raw_fields: dict[str, Any] = Field(
-        default_factory=dict,
-        description="Original Jira fields when required.",
-    )
+    raw_fields: dict[str, Any] = Field(default_factory=dict)
 
 
 # ============================================================
-# GET ISSUE INPUT
+# INPUT MODELS
 # ============================================================
+
 
 class GetIssueInput(BaseModel):
-    """
-    Input cho jira_get_issue.
-    """
+    model_config = ConfigDict(str_strip_whitespace=True)
 
-    issue_key: str = Field(
-        min_length=1,
-        description="Jira issue key, for example SP-123.",
-    )
+    issue_key: str = Field(min_length=1)
+    expand: list[str] = Field(default_factory=list)
 
-    expand: list[str] = Field(
-        default_factory=list,
-        description="Optional Jira expansion parameters.",
-    )
+    @field_validator("issue_key")
+    @classmethod
+    def normalize_issue_key(cls, value: str) -> str:
+        return value.upper()
 
-
-# ============================================================
-# CREATE ISSUE INPUT
-# ============================================================
 
 class CreateIssueInput(BaseModel):
     """
-    Input chuẩn để tạo Jira issue.
+    Rich create-issue schema.
 
-    Đây là input ở application layer.
-    Không chứa HTTP-specific details.
+    For issue_type=Bug, the QA fields below are validated so the MCP
+    does not create a vague one-line bug report.
     """
 
-    project_key: str = Field(
-        default="SP",
-        min_length=1,
-        max_length=20,
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    project_key: str = Field(default="SP", min_length=1, max_length=20)
+    issue_type: str = Field(default="Bug", min_length=1, max_length=100)
+    summary: str = Field(min_length=5, max_length=255)
+
+    # QA bug content
+    error_description: str | None = Field(
+        default=None,
+        description="Mô tả lỗi / bối cảnh nghiệp vụ.",
     )
-
-    issue_type: str = Field(
-        default="Bug",
-        min_length=1,
-        max_length=100,
+    steps_to_reproduce: list[str] = Field(
+        default_factory=list,
+        description="Các bước tái hiện lỗi theo thứ tự.",
     )
-
-    summary: str = Field(
-        min_length=1,
-        max_length=255,
-    )
-
-    description: str | None = None
-
-    steps_to_reproduce: str | None = None
-
-    expected_result: str | None = None
-
     actual_result: str | None = None
-
-    test_environment: list[str] = Field(
-        default_factory=list
+    expected_result: str | None = None
+    evidence: str | None = Field(
+        default=None,
+        description="Hồ sơ, ảnh, log, link hoặc dữ liệu minh chứng.",
     )
 
-    priority: str | None = None
-
-    assignee: str | None = None
-
-    reporter: str | None = None
-
-    labels: list[str] = Field(
-        default_factory=list
+    # People
+    assignee: str | None = Field(
+        default=None,
+        description="Jira username của người xử lý.",
+    )
+    reporter: str | None = Field(
+        default=None,
+        description="Jira username của reporter nếu Jira cho phép set.",
     )
 
-    components: list[str] = Field(
-        default_factory=list
+    # Dates
+    start_date: date | None = Field(
+        default=None,
+        description="Ngày bắt đầu. Jira custom field ID cấu hình trong .env.",
+    )
+    due_date: date | None = Field(
+        default=None,
+        description="Jira standard Due Date (duedate).",
     )
 
-    epic_key: str | None = None
+    # Classification
+    priority: str | None = Field(default="Medium")
+    labels: list[str] = Field(default_factory=list)
+    components: list[str] = Field(default_factory=list)
+    epic_key: str | None = Field(
+        default=None,
+        description="Epic Link. Custom field ID cấu hình trong .env.",
+    )
 
-    parent_key: str | None = None
+    # Environment / technical
+    environment: str | None = None
+    test_environment: list[str] = Field(default_factory=list)
 
     custom_fields: dict[str, Any] = Field(
         default_factory=dict,
-        description="Additional Jira custom fields.",
+        description="Additional Jira fields, normally customfield_xxxxx keys.",
     )
 
+    @field_validator("project_key")
+    @classmethod
+    def normalize_project_key(cls, value: str) -> str:
+        return value.upper()
 
-# ============================================================
-# UPDATE ISSUE INPUT
-# ============================================================
+    @field_validator("epic_key")
+    @classmethod
+    def normalize_epic_key(cls, value: str | None) -> str | None:
+        return value.upper() if value else value
+
+    @field_validator("labels")
+    @classmethod
+    def normalize_labels(cls, values: list[str]) -> list[str]:
+        # preserve order while removing empty/duplicate labels
+        seen: set[str] = set()
+        result: list[str] = []
+        for item in values:
+            value = item.strip()
+            if value and value not in seen:
+                seen.add(value)
+                result.append(value)
+        return result
+
+    @field_validator("steps_to_reproduce")
+    @classmethod
+    def normalize_steps(cls, values: list[str]) -> list[str]:
+        return [item.strip() for item in values if item and item.strip()]
+
+    @model_validator(mode="after")
+    def validate_bug_completeness(self):
+        if self.issue_type.casefold() != "bug":
+            return self
+
+        missing: list[str] = []
+
+        if not self.error_description:
+            missing.append("error_description")
+        if not self.steps_to_reproduce:
+            missing.append("steps_to_reproduce")
+        if not self.actual_result:
+            missing.append("actual_result")
+        if not self.expected_result:
+            missing.append("expected_result")
+
+        if missing:
+            raise ValueError(
+                "Bug report is incomplete. Missing required QA fields: "
+                + ", ".join(missing)
+            )
+
+        return self
+
 
 class UpdateIssueInput(BaseModel):
-    """
-    Input chuẩn để cập nhật Jira issue.
-    """
+    model_config = ConfigDict(str_strip_whitespace=True)
 
-    issue_key: str = Field(
-        min_length=1,
-    )
-
-    summary: str | None = Field(
-        default=None,
-        max_length=255,
-    )
-
+    issue_key: str = Field(min_length=1)
+    summary: str | None = Field(default=None, max_length=255)
     description: str | None = None
-
     priority: str | None = None
-
     assignee: str | None = None
-
     labels: list[str] | None = None
-
     components: list[str] | None = None
-
     environment: str | None = None
-
+    due_date: date | None = None
     custom_fields: dict[str, Any] | None = None
 
+    @field_validator("issue_key")
+    @classmethod
+    def normalize_issue_key(cls, value: str) -> str:
+        return value.upper()
+
+
+class DeleteIssuePrepareInput(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    issue_key: str = Field(min_length=1)
+    reason: str = Field(min_length=5, max_length=500)
+
+    @field_validator("issue_key")
+    @classmethod
+    def normalize_issue_key(cls, value: str) -> str:
+        return value.upper()
+
 
 # ============================================================
-# CREATE ISSUE RESULT
+# RESULT MODELS
 # ============================================================
+
 
 class CreateIssueResult(BaseModel):
-    """
-    Kết quả sau khi Jira tạo issue thành công.
-    """
-
     issue_key: str
-
     issue_id: str | None = None
-
     self_url: str | None = None
 
 
-# ============================================================
-# UPDATE ISSUE RESULT
-# ============================================================
-
 class UpdateIssueResult(BaseModel):
-    """
-    Kết quả sau khi Jira update issue thành công.
-    """
-
     issue_key: str
-
     updated: bool = True
-# ============================================================
-# DELETE ISSUE — PREPARE
-# ============================================================
 
-class DeleteIssuePrepareInput(BaseModel):
-    """
-    Input cho jira_delete_issue_prepare.
-
-    Delete là DESTRUCTIVE operation — bắt buộc phải có `reason`
-    ngay từ bước Prepare (mục 7: "DESTRUCTIVE — xóa, cần confirm
-    + lý do"). Bước Prepare KHÔNG có field `confirm`; confirm chỉ
-    xảy ra ở bước riêng (ConfirmDraftInput), giống create_issue.
-    """
-
-    issue_key: str = Field(
-        min_length=1,
-        description="Jira issue key sẽ bị xóa, ví dụ SP-123.",
-    )
-
-    reason: str = Field(
-        min_length=5,
-        max_length=500,
-        description=(
-            "Lý do xóa issue — bắt buộc, dùng để ghi vào draft "
-            "preview và audit trail."
-        ),
-    )
-
-
-# ============================================================
-# DELETE ISSUE RESULT
-# ============================================================
 
 class DeleteIssueResult(BaseModel):
-    """
-    Kết quả sau khi Jira xóa issue thành công.
-    """
-
     issue_key: str
-
     deleted: bool = True
-
     reason: str | None = None

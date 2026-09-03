@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -9,9 +9,7 @@ T = TypeVar("T")
 
 
 class ErrorInfo(BaseModel):
-    """
-    Chuẩn hóa thông tin lỗi trả về từ MCP.
-    """
+    """Chuẩn hóa thông tin lỗi trả về từ MCP."""
 
     code: str = Field(
         description="Machine-readable error code."
@@ -26,11 +24,14 @@ class ErrorInfo(BaseModel):
         description="Whether the operation can be safely retried."
     )
 
+    details: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional machine-readable error context."
+    )
+
 
 class ResponseMeta(BaseModel):
-    """
-    Metadata dùng chung cho mọi response.
-    """
+    """Metadata dùng chung cho mọi response."""
 
     request_id: str | None = Field(
         default=None,
@@ -44,11 +45,7 @@ class ResponseMeta(BaseModel):
 
 
 class MCPResponse(BaseModel, Generic[T]):
-    """
-    Response envelope chuẩn cho MCP Jira.
-
-    T là kiểu dữ liệu thực tế nằm trong data.
-    """
+    """Response envelope chuẩn cho MCP Jira."""
 
     ok: bool = Field(
         description="Whether the operation succeeded."

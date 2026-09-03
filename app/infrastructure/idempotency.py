@@ -1,41 +1,37 @@
 from __future__ import annotations
 
-"""
-Idempotency layer for WRITE tools (mục 9 trong sơ đồ).
-
-Cách dùng:
-    manager = IdempotencyManager()
-    cached = await manager.check(idempotency_key)
-    if cached is not None:
-        return cached  # trả về kết quả cũ, KHÔNG gọi Jira lại
-
-    result = await do_the_actual_write(...)
-    await manager.store(idempotency_key, result)
-    return result
-
-Mỗi request WRITE nên cung cấp idempotency_key (ví dụ:
-"bug-SAALEM-login-001"). Key được lưu kèm kết quả trong bảng
-idempotency_log, TTL mặc định 24h.
-"""
-
 import json
 import sqlite3
 import time
 from pathlib import Path
 from typing import Any
 
+from app.config import PROJECT_ROOT
 
-DEFAULT_DB_PATH = Path("jira_mcp_idempotency.db")
-DEFAULT_TTL_SECONDS = 24 * 60 * 60  # 24h, theo mục 9 trong sơ đồ
+
+DEFAULT_DB_PATH = PROJECT_ROOT / "jira_mcp_idempotency.db"
+DEFAULT_TTL_SECONDS = 24 * 60 * 60
+
+
+class IdempotencyConflictError(Exception):
+    """Raised when a key is reused for a different operation."""
 
 
 class IdempotencyManager:
+    """SQLite-backed best-effort idempotency cache for Jira WRITE operations."""
+
     def __init__(
         self,
         db_path: Path | str = DEFAULT_DB_PATH,
         ttl_seconds: int = DEFAULT_TTL_SECONDS,
     ) -> None:
-        self.db_path = str(db_path)
+        path = Path(db_path)
+        if not path.is_absolute():
+            path = PROJECT_ROOT / path
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        self.db_path = str(path)
         self.ttl_seconds = ttl_seconds
         self._init_db()
 
@@ -65,28 +61,37 @@ class IdempotencyManager:
             (cutoff,),
         )
 
-    async def check(self, idempotency_key: str) -> Any | None:
-        """
-        Trả về kết quả đã lưu nếu key đã tồn tại và chưa hết TTL,
-        ngược lại trả về None (nghĩa là: thực thi và lưu kết quả mới).
-        """
+    async def check(
+        self,
+        idempotency_key: str,
+        operation: str | None = None,
+    ) -> Any | None:
         if not idempotency_key:
             return None
 
         with self._connect() as conn:
             self._purge_expired(conn)
-            conn.commit()
 
             row = conn.execute(
-                "SELECT result_json FROM idempotency_log "
-                "WHERE idempotency_key = ?",
+                """
+                SELECT operation, result_json
+                FROM idempotency_log
+                WHERE idempotency_key = ?
+                """,
                 (idempotency_key,),
             ).fetchone()
+            conn.commit()
 
-            if row is None:
-                return None
+        if row is None:
+            return None
 
-            return json.loads(row["result_json"])
+        if operation is not None and row["operation"] != operation:
+            raise IdempotencyConflictError(
+                f"Idempotency key '{idempotency_key}' is already "
+                f"used by operation '{row['operation']}'."
+            )
+
+        return json.loads(row["result_json"])
 
     async def store(
         self,
@@ -98,20 +103,38 @@ class IdempotencyManager:
             return
 
         with self._connect() as conn:
+            existing = conn.execute(
+                """
+                SELECT operation
+                FROM idempotency_log
+                WHERE idempotency_key = ?
+                """,
+                (idempotency_key,),
+            ).fetchone()
+
+            if existing is not None and existing["operation"] != operation:
+                raise IdempotencyConflictError(
+                    f"Idempotency key '{idempotency_key}' is already "
+                    f"used by operation '{existing['operation']}'."
+                )
+
             conn.execute(
                 """
                 INSERT INTO idempotency_log
                     (idempotency_key, operation, result_json, created_at)
                 VALUES (?, ?, ?, ?)
                 ON CONFLICT(idempotency_key) DO UPDATE SET
-                    operation = excluded.operation,
                     result_json = excluded.result_json,
                     created_at = excluded.created_at
                 """,
                 (
                     idempotency_key,
                     operation,
-                    json.dumps(result, ensure_ascii=False, default=str),
+                    json.dumps(
+                        result,
+                        ensure_ascii=False,
+                        default=str,
+                    ),
                     time.time(),
                 ),
             )

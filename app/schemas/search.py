@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.issue import IssueData
 
 
-# ============================================================
-# SEARCH INPUT
-# ============================================================
-
 class SearchInput(BaseModel):
-    """
-    Input cho Jira JQL search.
-    """
+    """Input cho Jira JQL search."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
 
     jql: str = Field(
         min_length=1,
@@ -38,21 +34,10 @@ class SearchInput(BaseModel):
     )
 
 
-# ============================================================
-# SEARCH RESULT
-# ============================================================
-
 class SearchResult(BaseModel):
-    """
-    Chuẩn hóa kết quả search từ Jira.
-    """
+    """Chuẩn hóa kết quả search từ Jira."""
 
     total: int
-
     start_at: int
-
     max_results: int
-
-    issues: list[IssueData] = Field(
-        default_factory=list
-    )
+    issues: list[IssueData] = Field(default_factory=list)

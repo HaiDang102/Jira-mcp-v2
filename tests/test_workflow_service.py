@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio
+import pytest
 
 from app.infrastructure.jira_client import create_jira_client
 from app.schemas.workflow import (
@@ -14,6 +14,8 @@ from app.services.workflow_service import WorkflowService
 # TEST GET TRANSITIONS
 # ============================================================
 
+
+@pytest.mark.asyncio
 async def test_get_transitions():
     """
     Test đọc danh sách workflow transitions của Jira issue.
@@ -28,11 +30,17 @@ async def test_get_transitions():
 
         result = await service.get_transitions(
             GetTransitionsInput(
-                issue_key="SP-423"
+                issue_key="SP-423",
             )
         )
 
-        print("WORKFLOW SERVICE: OK")
+        # Basic assertions
+        assert result is not None
+        assert result.issue_key == "SP-423"
+        assert result.current_status is not None
+        assert result.available_transitions is not None
+
+        print("\nWORKFLOW SERVICE: OK")
         print("ISSUE:", result.issue_key)
         print("CURRENT STATUS:", result.current_status)
 
@@ -53,15 +61,16 @@ async def test_get_transitions():
 # TEST CONFIRMATION SAFETY
 # ============================================================
 
+
+@pytest.mark.asyncio
 async def test_transition_requires_confirmation():
     """
     Test safety:
 
     confirm=False
-    => không được phép thực hiện transition.
+    => WorkflowService phải từ chối transition.
 
-    Test này KHÔNG gọi Jira POST nếu WorkflowService
-    được thiết kế đúng theo nguyên tắc confirmation.
+    Test này không được thực hiện Jira transition.
     """
 
     client = create_jira_client()
@@ -69,7 +78,7 @@ async def test_transition_requires_confirmation():
     try:
         service = WorkflowService(client)
 
-        try:
+        with pytest.raises(ValueError) as exc_info:
             await service.transition_issue(
                 TransitionIssueInput(
                     issue_key="SP-416",
@@ -78,29 +87,10 @@ async def test_transition_requires_confirmation():
                 )
             )
 
-        except ValueError as exc:
-            print("CONFIRMATION SAFETY: OK")
-            print("ERROR:", exc)
+        assert str(exc_info.value)
 
-        else:
-            print(
-                "WARNING: transition_issue() "
-                "did not reject confirm=False"
-            )
+        print("\nCONFIRMATION SAFETY: OK")
+        print("ERROR:", exc_info.value)
 
     finally:
         await client.close()
-
-
-# ============================================================
-# MAIN
-# ============================================================
-
-async def main():
-    await test_get_transitions()
-    print()
-    await test_transition_requires_confirmation()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())

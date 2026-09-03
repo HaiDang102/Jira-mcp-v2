@@ -1,68 +1,73 @@
 from __future__ import annotations
 
-"""
-Search tools. Import order: sau khi `mcp`, `AppContext`, `_map_error`
-đã tồn tại trong app.server.
-"""
+from typing import Any
 
-from mcp.server.mcpserver import Context
+from mcp.server.mcpserver import Context, MCPServer
 
-from app.server import AppContext, _map_error, mcp
-
+from app.core.errors import map_exception
 from app.schemas.common import (
+    ErrorInfo,
     MCPResponse,
     ResponseMeta,
 )
-
 from app.schemas.search import (
     SearchInput,
     SearchResult,
 )
 
 
-# ============================================================
-# SEARCH ISSUE
-# ============================================================
+def _to_error_info(exc: Exception) -> ErrorInfo:
+    app_error = map_exception(exc)
 
-@mcp.tool(
-    name="jira_search_issue",
-    title="Search Jira Issues",
-    description=(
-        "Search Jira issues using JQL and return "
-        "a paginated list of normalized issues."
-    ),
-    structured_output=True,
-)
-async def jira_search_issue(
-    request: SearchInput,
-    ctx: Context,
-) -> MCPResponse[SearchResult]:
-
-    app_ctx: AppContext = (
-        ctx.request_context.lifespan_context
+    return ErrorInfo(
+        code=app_error.code,
+        message=app_error.message,
+        retryable=app_error.retryable,
     )
 
-    meta = ResponseMeta(
-        request_id=ctx.request_id,
-        operation="jira_search_issue",
-    )
 
-    try:
-        result = await app_ctx.search_service.search(
-            request
+def register_search_tools(mcp: MCPServer) -> None:
+    """Register Jira search tools."""
+
+    @mcp.tool(
+        name="jira_search_issue",
+        title="Search Jira Issues",
+        description=(
+            "Search Jira issues using JQL and return "
+            "a paginated list of normalized issues."
+        ),
+        structured_output=True,
+    )
+    async def jira_search_issue(
+        request: SearchInput,
+        ctx: Context,
+    ) -> MCPResponse[SearchResult]:
+
+        app_ctx: Any = (
+            ctx.request_context.lifespan_context
         )
 
-    except Exception as exc:
+        meta = ResponseMeta(
+            request_id=ctx.request_id,
+            operation="jira_search_issue",
+        )
+
+        try:
+            result = await app_ctx.search_service.search(
+                request
+            )
+
+        except Exception as exc:
+            return MCPResponse[SearchResult](
+                ok=False,
+                data=None,
+                error=_to_error_info(exc),
+                meta=meta,
+            )
+
         return MCPResponse[SearchResult](
-            ok=False,
-            data=None,
-            error=_map_error(exc),
+            ok=True,
+            data=result,
+            error=None,
             meta=meta,
         )
-
-    return MCPResponse[SearchResult](
-        ok=True,
-        data=result,
-        error=None,
-        meta=meta,
-    )

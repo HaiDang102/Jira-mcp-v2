@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from app.infrastructure.jira_client import JiraClient
-from app.schemas.issue import IssueData
 from app.schemas.search import SearchInput, SearchResult
 from app.services.issue_service import IssueService
 
@@ -13,32 +12,21 @@ class SearchService:
     Business/service layer cho Jira Search.
 
     Responsibilities:
-    - Validate search input
-    - Gọi Jira REST API
+    - Validate/consume SearchInput
+    - Gọi JiraClient
     - Mapping Jira search response
     - Không xử lý MCP transport
-    - Không xử lý HTTP trực tiếp
     """
 
     def __init__(self, jira_client: JiraClient) -> None:
         self.jira_client = jira_client
-        self.issue_service = IssueService(jira_client)
 
     async def search(
         self,
         request: SearchInput,
     ) -> SearchResult:
-        """
-        Search Jira issues bằng JQL.
-        """
-
-        jql = request.jql.strip()
-
-        if not jql:
-            raise ValueError("JQL cannot be empty.")
-
         params: dict[str, Any] = {
-            "jql": jql,
+            "jql": request.jql,
             "startAt": request.start_at,
             "maxResults": request.max_results,
         }
@@ -52,7 +40,7 @@ class SearchService:
         )
 
         issues = [
-            self.issue_service._map_issue(issue)
+            IssueService.map_issue(issue)
             for issue in result.get("issues", [])
         ]
 

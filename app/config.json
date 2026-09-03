@@ -1,0 +1,57 @@
+{
+  "mcpServers": {
+    "jira": {
+      "command": "C:\\Users\\My PC\\jira-mcp\\.venv\\Scripts\\python.exe",
+      "args": [
+        "C:\\Users\\My PC\\jira-mcp\\server.py"
+      ]
+    }
+  },
+  "coworkUserFilesPath": "C:\\Users\\My PC\\Claude",
+  "preferences": {
+    "coworkBrowserToolsEnabled": true,
+    "launchPreviewPersistedWorkspaces": [],
+    "launchPreviewSessionScopedSessions": [],
+    "coworkScheduledTasksEnabled": false,
+    "coworkHipaaRestricted": false,
+    "ccdScheduledTasksEnabled": false,
+    "sidebarMode": "chat",
+    "bypassPermissionsGateByAccount": {
+      "a7a4bd8f-b374-4489-9dd1-82307a8e3f4f": false,
+      "4a1fe1a5-e369-465d-b37e-7fff6d2269aa": false,
+      "48334d94-0e44-4cd9-b375-3c186a8a2b27": false
+    },
+    "coworkWebSearchEnabled": true,
+    "coworkModelAutoFallbackByAccount": {
+      "a7a4bd8f-b374-4489-9dd1-82307a8e3f4f": true,
+      "4a1fe1a5-e369-465d-b37e-7fff6d2269aa": true,
+      "48334d94-0e44-4cd9-b375-3c186a8a2b27": true
+    },
+    "remoteToolsDeviceName": "haidang-04",
+    "epitaxyPrefs": {
+      "starred-local-code-sessions": [],
+      "starred-cowork-spaces": [],
+      "starred-session-groups": [],
+      "dframe-group-scopes": {},
+      "dframe-local-slice": {
+        "pinnedOrder": [],
+        "homeProjectsPinnedOrder": []
+      },
+      "ccd-sessions-filter": {
+        "state": {
+          "selectedProjects": []
+        },
+        "version": 0
+      },
+      "desktop-frame.paneStore.v1": {
+        "state": {
+          "extraPanesByMode": {},
+          "colWeightsByMode": {},
+          "rowSplit": 0.5,
+          "draftNonce": 0
+        },
+        "version": 4
+      }
+    }
+  }
+}
